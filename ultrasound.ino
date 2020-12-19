@@ -22,9 +22,9 @@
 */
 
 // trigger / echo pins
-const int triggerPin = A0;
+const int triggerPin = D1;
 const int echoPin = D0;
-const int triggerPin2 = A5;
+const int triggerPin2 = D4;
 const int echoPin2 = D3;
 HC_SR04 rangefinder = HC_SR04(triggerPin, echoPin);
 HC_SR04 rangefinder2 = HC_SR04(triggerPin2, echoPin2);
@@ -43,6 +43,15 @@ void setup()
 {
     rangefinder.init();
     rangefinder2.init();
+    
+    Serial.begin(9600);
+    /*
+    while (!Serial.available()) {
+        Serial.println("Press any key to start.");
+		Particle.process();
+    }
+    */
+    delay (1000);
 }
 
 void loop()
@@ -91,12 +100,18 @@ void loop()
     //Empty char array to convert float into string type
     char cm1[20];
     sprintf(cm1, "%f", cm); // (array, write into string parameter, float)
-    
+    Serial.println("\n");
+    Serial.println(cm1);
+   
     char cm2[20];
     sprintf(cm2, "%f", cm_2);
+    Serial.println("\n");
+    Serial.println(cm2);
     
     char cm3[20];
     sprintf(cm3, "%f", cm+cm_2);
+    Serial.println("\n");
+    Serial.println(cm3);
     
     //const char * eventName = "AU665081_distance";
     //const char * myWriteAPIKey = "XBEUIB1C7NNVDO4S";

@@ -24,7 +24,7 @@ float HC_SR04::distCM()
 {
     // Speed of sound is approx 343 m/s
     // 343 m/s * 100 cm/m * 0.000001 s/us / 2.0 trips
-    const float uSecondsToCM = ((340.0f * 100.0 * 0.000001f) /  2.0f);
+    const float uSecondsToCM = ((343.0f * 100.0 * 0.000001f) /  2.0f);
     unsigned long timeUntilLow = triggerAndMeasurePulse();
     if (timeUntilLow == 0) return NO_SIGNAL;
     return (float)timeUntilLow * uSecondsToCM;
