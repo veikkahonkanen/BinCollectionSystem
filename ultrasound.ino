@@ -1,128 +1,178 @@
-//
-//    usage.h
-//    Purpose: Demonstration of how to use the HC-SR04 driver
-//
-//    Author: Richard Nash
-//    Version: 1.0.1
+//Libraries included are from Particle IDE, made by Richard Nash
 
 #include "HC-SR04.h"
+#define HOOK_REPEAT 3
 
-/*
- The HC-SR04 device is a 5V device. So, VIN (which is 5V when connected to a USB power supply)
- is used to power it. Also, the "Echo" pin will present a 5V pulse, which can be connected
- to any of the D* GPIO pins, as they are 5V tolerant. However, they cannot be connected to
- non-5V tolerant pins, like the A* pins, even if in digitial mode.
+//TODO: make device get the bin default depth on startup
+// Particle variable
+static double defaultDepthCm = 28.0;
 
- This example expects the wiring to be as follows:
-    Photon  HC-SR04
-    GND     GND
-    VIN     VCC
-    A0      Trig
-    D0      Echo
-*/
+// Particles function (setter for the variable)
+int setDepthInCM(String extra)
+{
+    defaultDepthCm = extra.toFloat();
+    return 0;
+}
+
+void initializeParticleVariablesAndFunctions()
+{
+    Particle.variable("defaultDepthCm", &defaultDepthCm, DOUBLE);
+
+    Particle.function("setDefaultDepthInCM", setDepthInCM);
+}
 
 // trigger / echo pins
 const int triggerPin = D1;
 const int echoPin = D0;
-const int triggerPin2 = D4;
-const int echoPin2 = D3;
+
+// Setup
 HC_SR04 rangefinder = HC_SR04(triggerPin, echoPin);
-HC_SR04 rangefinder2 = HC_SR04(triggerPin2, echoPin2);
-//TODO: make device get the bin default depth on startup
-double defaultDepthCm = 50.0;
+
 float threshold000 = 0.00;
 float threshold020 = 0.20;
 float threshold040 = 0.40;
 float threshold060 = 0.60;
 float threshold080 = 0.80;
 float threshold100 = 1.00;
-//unsigned long publish_delay =       60000;
-//unsigned long previousPublish =      0   ;
+
+int tiSuccessfulUpdates = 0;
+static int n = 0;
+static float currentDistance = 0.0;
+
+//This is needed to see if publishing succeeded
+static void updateFillPercentage()
+{
+    int tiInvalidCalls;
+    bool tiValidResponse;
+
+    tiValidResponse = false;
+    tiInvalidCalls = 0;
+
+    while (!tiValidResponse && tiInvalidCalls < HOOK_REPEAT)
+    {
+        float cm = rangefinder.distCM();
+        delay(1000);
+        
+        //All HC-SR04 error codes are sub-zero
+        if (cm < 0)
+        {
+            // error
+            Serial.printf("Call #%d: fullness update failed due to internal error!\n", tiInvalidCalls);
+            tiInvalidCalls++;
+        }
+        else
+        {
+            Serial.printf("We obtained distance of %f \n", cm);
+            
+            if (!Particle.connected())
+            {
+                //No internet connection, network failure
+                Serial.printf("Call #%d: fullness update failed due to disconnection!\n", tiInvalidCalls);
+                tiInvalidCalls++;
+            }
+            else
+            {
+                Serial.println("TI: Valid data.");
+                currentDistance = cm;
+                tiInvalidCalls = 0;
+                tiValidResponse = true;
+            }
+        }
+    }
+
+    // Even after HOOK_REPEAT tries, module failed, we need to reuse the old data
+    // and try again next time device will wake up
+    if (!tiValidResponse)
+    {
+        Serial.println("Publishing failed!");
+        if (tiSuccessfulUpdates > 0)
+        {
+            Serial.println("Using latest valid data...");
+        }
+        else
+        {
+            // We cannot show anything, because there is no valid data
+            Serial.println("We cannot show anything, because there is no valid data!");
+        }
+    }
+    else
+    {
+        tiSuccessfulUpdates++;
+    }
+}
 
 void setup()
 {
+    // Put initialization like pinMode and begin functions here.
+    initializeParticleVariablesAndFunctions();
+
+    // Set timezone to Copenhagen
+    Time.zone(1);
+    
     rangefinder.init();
-    rangefinder2.init();
     
     Serial.begin(9600);
-    /*
-    while (!Serial.available()) {
-        Serial.println("Press any key to start.");
-		Particle.process();
-    }
-    */
     delay (1000);
 }
 
 void loop()
 {
-    //if (previousPublish == 0) {
-	//		previousPublish = millis();
-	//	}
-    //if (millis()  - previousPublish >= publish_delay) {
-    //unsigned long start = micros();
-    float cm = rangefinder.distCM();
-    //unsigned long calcTime = micros() - start;
-    delay(1000);
-    //unsigned long start2 = micros();
-    float cm_2 = rangefinder2.distCM();
-    //unsigned long calcTime2 = micros() - start2;
+
+    updateFillPercentage();
     
     //Fill percentage
-    /*
-    if(((cm+cm_2)/2)/defaultDepthCm < threshold020){
+    //Two modules: uncomment the comments below and remove 'cm' from the formulas
+    
+    if((currentDistance / defaultDepthCm) >= threshold100){
         char result[5] = "00";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
     }
-    else if(((cm+cm_2)/2)/defaultDepthCm >= threshold020 && ((cm+cm_2)/2)/defaultDepthCm < threshold040){
+    else if((currentDistance / defaultDepthCm) >= threshold080 && (currentDistance / defaultDepthCm) < threshold100){
         char result[5] = "20";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
     }
-    else if(((cm+cm_2)/2)/defaultDepthCm >= threshold040 && ((cm+cm_2)/2)/defaultDepthCm < threshold060){
+    else if((currentDistance / defaultDepthCm) >= threshold060 && (currentDistance / defaultDepthCm) < threshold080){
         char result[5] = "40";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
     }
-    else if(((cm+cm_2)/2)/defaultDepthCm >= threshold060 && ((cm+cm_2)/2)/defaultDepthCm < threshold080){
+    else if((currentDistance / defaultDepthCm) >= threshold040 && (currentDistance / defaultDepthCm) < threshold060){
         char result[5] = "60";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
     }
-    else if(((cm+cm_2)/2)/defaultDepthCm >= threshold080 && ((cm+cm_2)/2)/defaultDepthCm < threshold100){
+     else if((currentDistance / defaultDepthCm) >= threshold020 && (currentDistance / defaultDepthCm) < threshold040){
         char result[5] = "80";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
     }
-    else if(((cm+cm_2)/2)/defaultDepthCm >= threshold100){
+    else if((currentDistance / defaultDepthCm) < threshold020){
         char result[5] = "100";
+        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+    }
+    //In case if the distance was measured as valid, but still can't calculate to values above
+    else {
+        char result[5] = "-1";
         Particle.publish("AU665081_distance", result, PRIVATE);
     }
-    */
-    //TODO: remove excess code
     
-    //Empty char array to convert float into string type
-    char cm1[20];
-    sprintf(cm1, "%f", cm); // (array, write into string parameter, float)
-    Serial.println("\n");
-    Serial.println(cm1);
-   
-    char cm2[20];
-    sprintf(cm2, "%f", cm_2);
-    Serial.println("\n");
-    Serial.println(cm2);
+    float lat = 56.16321969932991;
+    float lon = 10.190753980865416;
+    int battery = 56;
     
-    char cm3[20];
-    sprintf(cm3, "%f", cm+cm_2);
-    Serial.println("\n");
-    Serial.println(cm3);
-    
-    //const char * eventName = "AU665081_distance";
-    //const char * myWriteAPIKey = "XBEUIB1C7NNVDO4S";
-    ///char msg[256];
-    //snprintf(msg, sizeof(msg), "{\"1\":\"%.1f\",\"2\":\"%.1f\",\"k\":\"%s\"}", cm1, cm2, myWriteAPIKey);
-    //Particle.publish(eventName, msg, PRIVATE, NO_ACK);
-    Particle.publish("AU665081_distance", cm3, PRIVATE);
-    //previousPublish = millis();
-    delay(60000);
-    //}else{
-    //    previousPublish = 0;
-    //}
-    //delay(1000);
+    Particle.publish("AU665081_status", "{ \"1\": \"" + String(lat) + "\", \"2\":\"" + String(lon) + "\", \"3\":\"" + String(battery) + "\", \"k\":\"T8IFB8HPRG46ZEVY\" }", 60, PRIVATE, WITH_ACK);
+
+        Serial.printlnf("Sleep cycle #%d: Going to sleep for %d minutes...", n, 480);
+        SystemSleepConfiguration config;
+        config.mode(SystemSleepMode::STOP)
+            .duration(8h)
+            .flag(SystemSleepFlag::WAIT_CLOUD);
+        SystemSleepResult result = System.sleep(config);
+
+        if (result.error() != 0)
+        {
+            Serial.printlnf("Something went wrong during #%d sleep cycle.", n);
+        }
+        else
+        {
+            Serial.printlnf("Sleep cycle #%d: Device successfully woke up from sleep.", n);
+        }
+        n++;
 }
