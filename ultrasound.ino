@@ -1,3 +1,5 @@
+#include <HttpClient.h>
+
 //Libraries included are from Particle IDE, made by Richard Nash
 
 #include "HC-SR04.h"
@@ -37,7 +39,12 @@ float threshold100 = 1.00;
 
 int tiSuccessfulUpdates = 0;
 static int n = 0;
-static float currentDistance = 0.0;
+static float currentDistance = 10.0;
+
+void server_response_checker(const char *event, const char *data) {
+  Serial.println(event);
+  Serial.println(data);
+}
 
 //This is needed to see if publishing succeeded
 static void updateFillPercentage()
@@ -113,6 +120,8 @@ void setup()
     
     Serial.begin(9600);
     delay (1000);
+    Particle.subscribe("hook-response/distance", server_response_checker);
+    Particle.subscribe("hook-response/status", server_response_checker);
 }
 
 void loop()
@@ -122,57 +131,55 @@ void loop()
     
     //Fill percentage
     //Two modules: uncomment the comments below and remove 'cm' from the formulas
+    int fullness = 0;
     
     if((currentDistance / defaultDepthCm) >= threshold100){
-        char result[5] = "00";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 0;
     }
     else if((currentDistance / defaultDepthCm) >= threshold080 && (currentDistance / defaultDepthCm) < threshold100){
-        char result[5] = "20";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 20;
     }
     else if((currentDistance / defaultDepthCm) >= threshold060 && (currentDistance / defaultDepthCm) < threshold080){
-        char result[5] = "40";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 40;
     }
     else if((currentDistance / defaultDepthCm) >= threshold040 && (currentDistance / defaultDepthCm) < threshold060){
-        char result[5] = "60";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 60;
     }
      else if((currentDistance / defaultDepthCm) >= threshold020 && (currentDistance / defaultDepthCm) < threshold040){
-        char result[5] = "80";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 80;
     }
     else if((currentDistance / defaultDepthCm) < threshold020){
-        char result[5] = "100";
-        Particle.publish("AU665081_distance", result, PRIVATE, WITH_ACK);
+        fullness = 100;
     }
     //In case if the distance was measured as valid, but still can't calculate to values above
     else {
-        char result[5] = "-1";
-        Particle.publish("AU665081_distance", result, PRIVATE);
+        fullness = -1;
+    }
+    Serial.println("Publishing fullness " + String(fullness));
+    Particle.publish("distance", "{ \"1\": " + String(fullness) + "}", 60, PRIVATE, WITH_ACK);
+    delay(1000);
+    
+    int battery = 56;
+    Serial.println("Publishing battery status " + String(battery));
+    Particle.publish("status", "{ \"1\": " + String(battery) + "}", 60, PRIVATE, WITH_ACK);
+    
+    
+    Serial.printlnf("Sleep cycle #%d: Going to sleep for %d minutes...", n, 480);
+    SystemSleepConfiguration config;
+    config.mode(SystemSleepMode::STOP)
+        .duration(8h)
+        .flag(SystemSleepFlag::WAIT_CLOUD);
+    SystemSleepResult result = System.sleep(config);
+
+    if (result.error() != 0)
+    {
+        Serial.printlnf("Something went wrong during #%d sleep cycle.", n);
+    }
+    else
+    {
+        Serial.printlnf("Sleep cycle #%d: Device successfully woke up from sleep.", n);
     }
     
-    float lat = 56.16321969932991;
-    float lon = 10.190753980865416;
-    int battery = 56;
-    
-    Particle.publish("AU665081_status", "{ \"1\": \"" + String(lat) + "\", \"2\":\"" + String(lon) + "\", \"3\":\"" + String(battery) + "\", \"k\":\"T8IFB8HPRG46ZEVY\" }", 60, PRIVATE, WITH_ACK);
-
-        Serial.printlnf("Sleep cycle #%d: Going to sleep for %d minutes...", n, 480);
-        SystemSleepConfiguration config;
-        config.mode(SystemSleepMode::STOP)
-            .duration(8h)
-            .flag(SystemSleepFlag::WAIT_CLOUD);
-        SystemSleepResult result = System.sleep(config);
-
-        if (result.error() != 0)
-        {
-            Serial.printlnf("Something went wrong during #%d sleep cycle.", n);
-        }
-        else
-        {
-            Serial.printlnf("Sleep cycle #%d: Device successfully woke up from sleep.", n);
-        }
-        n++;
+    delay(1000);
+    n++;
 }
